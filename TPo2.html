@@ -1,0 +1,473 @@
+<html>
+<!--
+
+The entire code of this project is written in hope that nobody will try to understand how it works.
+
+-->
+<head>
+<title>Brain fucking game &mdash; Alexander Taran</title>
+<link rel="icon" type="image/png" href="favicon.png" />
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+<script type="text/javascript" src="js/glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="js/webgl-utils.js"></script>
+
+<script id="common-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+  attribute vec2 tc;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    tc_ = tc;
+  }
+</script>
+
+<script id="common-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform sampler2D tex;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    gl_FragColor = texture2D(tex, vec2(tc_.s, tc_.t));
+  }
+</script>
+
+<script id="texcolor-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+  attribute vec2 tc;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    tc_ = tc;
+  }
+</script>
+
+<script id="texcolor-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform sampler2D tex;
+  uniform vec4 col;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    gl_FragColor = texture2D(tex, vec2(tc_.s, tc_.t)) * col;
+  }
+</script>
+
+
+<script id="cell-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+  attribute vec2 tc;
+
+  varying vec2 tc_;
+  varying float y_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    tc_ = tc;
+    y_ = pos.y;
+  }
+</script>
+
+<script id="cell-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform vec4 col_num;
+  uniform vec4 col_back;
+  uniform sampler2D tex;
+
+  varying vec2 tc_;
+  varying float y_;
+
+  void main(void) {
+    vec4 texcol = vec4(texture2D(tex, vec2(tc_.s, tc_.t)).xyz, 1.0);
+    if (abs(y_) > 0.98) {
+      texcol = vec4(1.0);
+    }
+    vec4 icol = col_back * texcol + col_num * (vec4(1.0) - texcol);
+    gl_FragColor = icol;
+  }
+</script>
+
+<script id="cellinterp-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+  attribute vec2 tc;
+
+  varying vec2 tc_;
+  varying float y_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    tc_ = tc;
+    y_ = pos.y;
+  }
+</script>
+
+<script id="cellinterp-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform vec4 col_num1;
+  uniform vec4 col_back1;
+  uniform vec4 col_num2;
+  uniform vec4 col_back2;
+  uniform sampler2D tex1;
+  uniform sampler2D tex2;
+  uniform float interp;
+
+  varying vec2 tc_;
+  varying float y_;
+
+  void main(void) {
+    vec4 texcol1 = vec4(texture2D(tex1, vec2(tc_.s, tc_.t)).xyz, 1.0);
+    vec4 texcol2 = vec4(texture2D(tex2, vec2(tc_.s, tc_.t)).xyz, 1.0);
+    if (abs(y_) > 0.98) {
+      texcol1 = vec4(1.0);
+      texcol2 = vec4(1.0);
+    }
+    vec4 icol1 = col_back1 * texcol1 + col_num1 * (vec4(1.0) - texcol1);
+    vec4 icol2 = col_back2 * texcol2 + col_num2 * (vec4(1.0) - texcol2);
+    gl_FragColor = icol1 * vec4(1.0 - interp) + icol2 * vec4(interp);
+  }
+</script>
+
+<script id="color-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+  attribute vec3 col;
+
+  varying vec3 col_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    col_ = col;
+  }
+</script>
+
+<script id="color-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  varying vec3 col_;
+
+  void main(void) {
+    gl_FragColor = vec4(col_, 1.0);
+  }
+</script>
+
+<script id="ucolor-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+
+  attribute vec3 pos;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+  }
+</script>
+
+<script id="ucolor-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform vec4 col;
+
+  void main(void) {
+    gl_FragColor = col;
+  }
+</script>
+
+<script id="font-vs" type="x-shader/x-vertex">
+  uniform mat4 modelview_matrix;
+  uniform mat4 projection_matrix;
+  uniform mat4 texture_matrix;
+
+  attribute vec3 pos;
+  attribute vec2 tc;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    gl_Position = projection_matrix * modelview_matrix * vec4(pos, 1.0);
+    tc_ = (texture_matrix * vec4(tc, 0.0, 1.0)).xy;
+  }
+</script>
+
+<script id="font-fs" type="x-shader/x-fragment">
+  precision mediump float;
+
+  uniform sampler2D tex;
+
+  uniform vec4 col;
+
+  varying vec2 tc_;
+
+  void main(void) {
+    vec4 texcol = texture2D(tex, tc_);
+    gl_FragColor = col * texcol.w;
+  }
+</script>
+
+
+<script type="text/javascript" src="js/buffer_factory.js"></script>
+<script type="text/javascript" src="js/texture_loader.js"></script>
+<script type="text/javascript" src="js/shader_loader.js"></script>
+<script type="text/javascript" src="js/TileColors.js"></script>
+<script type="text/javascript" src="js/GameScene.js"></script>
+<script type="text/javascript" src="js/MainMenuScene.js"></script>
+<script type="text/javascript" src="js/jshelpers.js"></script>
+<script type="text/javascript" src="js/renderers.js"></script>
+<script type="text/javascript" src="js/GameState.js"></script>
+<script type="text/javascript" src="js/FontRenderer.js"></script>
+<script type="text/javascript" src="js/ColorTextRect.js"></script>
+<script type="text/javascript" src="fonts/font.js"></script>
+<script type="text/javascript" src="js/Cookies.js"></script>
+<script type="text/javascript" src="js/KeyCodes.js"></script>
+<script type="text/javascript" src="js/KeyboardInfo.js"></script>
+<script type="text/javascript" src="js/OptionsScreen.js"></script>
+<script type="text/javascript" src="js/KeyboardSettings.js"></script>
+<script type="text/javascript" src="js/Projectors.js"></script>
+<script type="text/javascript" src="js/ScoreCounter.js"></script>
+<script type="text/javascript" src="js/AvailableGames.js"></script>
+
+<script type="text/javascript">
+  
+  var gl;
+  var CURRENT_SCENE = null;
+  var FONT_RENDERER = null;
+  var canvas = null;
+  
+  function handleKeyDown(event) {
+    CURRENT_SCENE.handleKeyDown(event);
+  }
+
+  function handleKeyUp(event) {
+    CURRENT_SCENE.handleKeyUp(event);
+  }
+
+  function handleMouseDown(event) {
+    CURRENT_SCENE.handleMouseDown(event);
+  }
+
+  function handleMouseUp(event) {
+    CURRENT_SCENE.handleMouseUp(event);
+  }
+
+  function handleMouseMove(event) {
+    CURRENT_SCENE.handleMouseMove(event);
+  }
+
+  function initGL(canvas) {
+    try {
+      gl = canvas.getContext("experimental-webgl");
+      gl.viewportWidth = canvas.width;
+      gl.viewportHeight = canvas.height;
+    } catch (e) {
+    }
+    if (!gl) {
+      alert("Could not initialise WebGL, sorry :-(\nYou need to have Chrome and video drivers installed.");
+    }
+  }
+  
+  var Programs = {};
+
+  function initPrograms() {
+    Programs.common = loadProgram("common-vs", "common-fs",
+        {attribs: ["pos", "tc"], uniforms:["tex", "projection_matrix", "modelview_matrix"]});
+    Programs.texcolor = loadProgram("texcolor-vs", "texcolor-fs",
+        {attribs: ["pos", "tc"], uniforms:["tex", "col", "projection_matrix", "modelview_matrix"]});
+    Programs.cell = loadProgram("cell-vs", "cell-fs",
+        {attribs: ["pos", "tc"], uniforms:["tex", "col_num", "col_back", "projection_matrix", "modelview_matrix"]});
+    Programs.cellinterp = loadProgram("cellinterp-vs", "cellinterp-fs",
+        {attribs: ["pos", "tc"], uniforms:["interp", "tex1", "tex2", "col_num1", "col_num2", "col_back1", "col_back2", "projection_matrix", "modelview_matrix"]});
+    Programs.color = loadProgram("color-vs", "color-fs",
+        {attribs: ["pos", "col"], uniforms:["projection_matrix", "modelview_matrix"]});
+    Programs.font = loadProgram("font-vs", "font-fs",
+        {attribs: ["pos", "tc"],  uniforms:["projection_matrix", "modelview_matrix", "texture_matrix", "col"]});
+    Programs.ucolor = loadProgram("ucolor-vs", "ucolor-fs",
+        {attribs: ["pos"],  uniforms:["projection_matrix", "modelview_matrix", "col"]});
+  }
+
+  var VBOs = {};
+  var Textures = {};
+
+  function initBuffers() {
+    VBOs.basis = {};
+    VBOs.basis.vertexPositionBuffer   = BufferFactory.basis.createVertexPositionBuffer();
+    VBOs.basis.vertexColorBuffer      = BufferFactory.basis.createVertexColorBuffer();
+    
+    VBOs.triangleVertexPositionBuffer = BufferFactory.createTriangleVertexPositionBuffer(); 
+    VBOs.triangleVertexColorBuffer    = BufferFactory.createTriangleVertexColorBuffer();
+    VBOs.squareVertexPositionBuffer   = BufferFactory.createSquareVertexPositionBuffer();
+    VBOs.squareVertexTexcoordBuffer   = BufferFactory.createSquareVertexTexcoordBuffer();
+    VBOs.squareVertexColorBuffer      = BufferFactory.createSquareVertexColorBuffer();
+    VBOs.pyramidVertexPositionBuffer  = BufferFactory.createPyramidVertexPositionBuffer();
+    VBOs.pyramidVertexColorBuffer     = BufferFactory.createPyramidVertexColorBuffer();
+    VBOs.cubeVertexPositionBuffer     = BufferFactory.createCubeVertexPositionBuffer();
+    VBOs.cubeVertexColorBuffer        = BufferFactory.createCubeVertexColorBuffer();
+    VBOs.cubeVertexTexCoordBuffer     = BufferFactory.createCubeVertexTexCoordBuffer();
+    VBOs.cubeIndexBuffer              = BufferFactory.createCubeIndexBuffer();
+  }
+
+  function initTextures() {
+    Textures.tiles = {};
+    for (var i = 2; i <= 65536; i *= 2) {
+      Textures.tiles[i] = loadTexture("numbers/" + i.toString() + ".png");
+      Textures.tiles[i].col_num = TileColors[i].num;
+      Textures.tiles[i].col_back = TileColors[i].back;
+    }
+    Textures.tiles[0] = loadTexture("numbers/0.png"); 
+    Textures.tiles[0].col_num  = TileColors[0].num;
+    Textures.tiles[0].col_back = TileColors[0].back;
+    Textures.bsod      = loadTexture("numbers/bsod.png");
+    Textures.npot      = loadTexture("numbers/npot.png");
+
+    Textures.font      = loadTexture("fonts/font.png");
+    Textures.accepted  = loadTexture("img/accepted.png");
+    Textures.okay      = loadTexture("img/okay.png");
+
+    Textures.getTextureForTile = function(n) {
+      if (n in Textures.tiles) {
+        return Textures.tiles[n];
+      } else if ((n & (n-1)) == 0) {
+        return Textures.bsod;
+      } else {
+        return Textures.npot;
+      }
+    }
+
+    Textures.getNumberColorForTile = function(n) {
+      if (n in Textures.tiles) {
+        return Textures.tiles[n].col_num;
+      } else {
+        return [1.0, 1.0, 1.0, 1.0];
+      }
+    }
+
+    Textures.getBackgroundColorForTile = function(n) {
+      if (n in Textures.tiles) {
+        return Textures.tiles[n].col_back;
+      } else if ((n & (n-1)) == 0) {
+        return [0.0, 0.0, 1.0, 1.0];
+      } else {
+        return [0.0, 0.6, 0.0, 1.0];
+      }
+    }
+
+
+  }
+
+  function renderBasis() {
+    gl.useProgram(Programs.color);
+    gl.enableVertexAttribArray(Programs.color.attribs.pos);
+    gl.enableVertexAttribArray(Programs.color.attribs.col);
+    gl.uniformMatrix4fv(Programs.color.uniforms.projection_matrix, false, pMatrix);
+    gl.uniformMatrix4fv(Programs.color.uniforms.modelview_matrix, false, mvMatrix);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBOs.basis.vertexPositionBuffer);
+    gl.vertexAttribPointer(Programs.color.attribs.pos, VBOs.basis.vertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBOs.basis.vertexColorBuffer);
+    gl.vertexAttribPointer(Programs.color.attribs.col, VBOs.basis.vertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+    gl.drawArrays(gl.LINES, 0, VBOs.basis.vertexPositionBuffer.numItems);
+    
+    gl.useProgram(null);
+  }
+
+  
+
+  function viewport() {
+    var e = window
+    , a = 'inner';
+    if ( !( 'innerWidth' in window ) ) {
+      a = 'client';
+      e = document.documentElement || document.body;
+    }
+    return { width : e[ a+'Width' ] , height : e[ a+'Height' ] }
+  }
+
+  function webGLStart() {
+    loadKeyboardSettings();
+
+    CURRENT_SCENE = new MainMenuScene(true);
+    canvas = document.getElementById("game-canvas");
+    vp = viewport();
+    canvas.width = vp.width * 0.9;
+    canvas.height= vp.height * 0.9;
+    
+    initGL(canvas);
+    initPrograms();
+    initBuffers();
+    initTextures();
+    
+    FONT_RENDERER = new FontRenderer(FONT_LAYOUT, Textures.font);
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
+
+    document.onkeydown = handleKeyDown;
+    document.onkeyup = handleKeyUp;
+
+    canvas.onmousedown = handleMouseDown;
+    document.onmouseup = handleMouseUp;
+    document.onmousemove = handleMouseMove;
+
+    tick();
+  }
+
+  function tick() {
+    requestAnimFrame(tick);
+    CURRENT_SCENE.drawScene();
+    animate();
+  }
+
+  var lastTime = 0;
+  
+  function animate() {
+    var timeNow = new Date().getTime();
+    if (lastTime != 0) {
+      var elapsed = timeNow - lastTime;
+      CURRENT_SCENE.animate(elapsed);
+    }
+    lastTime = timeNow; 
+  }
+
+</script>
+
+
+</head>
+
+
+<body background="img/wyoming_shaded.png" onload="webGLStart();" style="text-align: center;">
+  <div>
+    <a href="http://alextaran.net">www.alextaran.net</a>
+  </div>
+
+  <div>
+    <canvas id="game-canvas" style="border: none;" width="auto" height="auto"></canvas>
+  </div>
+
+  <div>
+    <a href="http://alextaran.net">www.alextaran.net</a>
+  </div>
+</body>
+
+</html>
